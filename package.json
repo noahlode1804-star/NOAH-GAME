@@ -15,6 +15,7 @@
   "build": {
     "appId": "com.noah.game",
     "productName": "NOAH GAME",
+    "artifactName": "NOAH-GAME-Setup.exe",
     "directories": {
       "output": "installer"
     },
