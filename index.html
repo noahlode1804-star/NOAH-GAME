@@ -1,0 +1,441 @@
+
+<!DOCTYPE html>
+<html lang="nl">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>NOAH GAME — V1</title>
+
+    <link rel="stylesheet" href="styles/game.css">
+    <link rel="stylesheet" href="styles/weapon-hud.css">
+
+    <style>
+        /* WAPEN-GUI: ALLEEN TIJDENS HET SPELEN */
+        #weapon-hud {
+            display: none !important;
+        }
+
+        body.game-started #weapon-hud {
+            display: flex !important;
+        }
+
+        #noah-loading {
+            position: fixed;
+            inset: 0;
+            z-index: 9999;
+            display: none;
+            align-items: center;
+            justify-content: center;
+            flex-direction: column;
+            color: white;
+            background: radial-gradient(circle at center, #102d4c 0%, #050a13 65%);
+            font-family: Arial, Helvetica, sans-serif;
+        }
+
+        #noah-loading.visible {
+            display: flex;
+        }
+
+        .loading-logo {
+            width: 90px;
+            height: 90px;
+            display: grid;
+            place-items: center;
+            border: 2px solid #35d9ff;
+            color: white;
+            font-size: 48px;
+            font-weight: 900;
+            font-style: italic;
+            background: linear-gradient(145deg, #167ad0, #071c35);
+            box-shadow: 0 0 40px #168cff88;
+            clip-path: polygon(0 0, 100% 0, 100% 75%, 75% 100%, 0 100%);
+            animation: loadingPulse 1.5s ease-in-out infinite;
+        }
+
+        .loading-title {
+            margin-top: 35px;
+            font-size: 27px;
+            font-weight: 900;
+            letter-spacing: 5px;
+        }
+
+        .loading-subtitle {
+            margin-top: 12px;
+            color: #78bce9;
+            font-size: 10px;
+            letter-spacing: 4px;
+        }
+
+        .loading-spinner {
+            width: 48px;
+            height: 48px;
+            margin-top: 40px;
+            border: 3px solid #ffffff20;
+            border-top-color: #35d9ff;
+            border-right-color: #168cff;
+            border-radius: 50%;
+            animation: loadingSpin 0.8s linear infinite;
+        }
+
+        .loading-bar {
+            width: min(340px, 75vw);
+            height: 5px;
+            margin-top: 30px;
+            overflow: hidden;
+            background: #ffffff18;
+            border-radius: 10px;
+        }
+
+        .loading-bar::after {
+            content: "";
+            display: block;
+            width: 40%;
+            height: 100%;
+            background: linear-gradient(90deg, #168cff, #35d9ff);
+            box-shadow: 0 0 15px #35d9ff;
+            animation: loadingProgress 1.4s ease-in-out infinite;
+        }
+
+        .loading-message {
+            margin-top: 18px;
+            color: #9bb6cc;
+            font-size: 10px;
+            letter-spacing: 2px;
+        }
+
+        @keyframes loadingSpin {
+            to { transform: rotate(360deg); }
+        }
+
+        @keyframes loadingPulse {
+            50% {
+                transform: scale(1.06);
+                box-shadow: 0 0 65px #168cff;
+            }
+        }
+
+        @keyframes loadingProgress {
+            0% { transform: translateX(-110%); }
+            100% { transform: translateX(260%); }
+        }
+    </style>
+</head>
+
+<body>
+
+    <div id="hud">
+        <h2>NOAH GAME</h2>
+        <p>WASD - Bewegen</p>
+        <p>Muis - Rondkijken</p>
+    </div>
+
+    <div id="crosshair">+</div>
+
+    <!-- WEAPON HUD -->
+    <div id="weapon-hud">
+
+        <div id="weapon-info">
+            <div id="weapon-name">PISTOL</div>
+
+            <div id="weapon-ammo">
+                <span id="ammo-current">12</span>
+                <span class="ammo-divider">/</span>
+                <span id="ammo-total">48</span>
+            </div>
+        </div>
+
+        <div id="weapon-bar">
+
+            <div class="weapon-slot selected" data-slot="1">
+                <span class="slot-number">01</span>
+                <span class="weapon-icon">
+                    <img
+                        id="pistol-icon"
+                        src="textures/pistol.png"
+                        alt="Pistol"
+                    >
+                </span>
+                <span class="slot-name">PISTOL</span>
+            </div>
+
+            <div class="weapon-slot empty" data-slot="2">
+                <span class="slot-number">02</span>
+                <span class="weapon-icon"></span>
+                <span class="slot-name">EMPTY</span>
+            </div>
+
+            <div class="weapon-slot empty" data-slot="3">
+                <span class="slot-number">03</span>
+                <span class="weapon-icon"></span>
+                <span class="slot-name">EMPTY</span>
+            </div>
+
+            <div class="weapon-slot empty" data-slot="4">
+                <span class="slot-number">04</span>
+                <span class="weapon-icon"></span>
+                <span class="slot-name">EMPTY</span>
+            </div>
+
+            <div class="weapon-slot empty" data-slot="5">
+                <span class="slot-number">05</span>
+                <span class="weapon-icon"></span>
+                <span class="slot-name">EMPTY</span>
+            </div>
+
+        </div>
+    </div>
+
+    <!-- LOADING SCREEN -->
+    <div id="noah-loading">
+        <div class="loading-logo">N</div>
+        <div class="loading-title">NOAH GAME</div>
+        <div class="loading-subtitle">PREPARING YOUR WORLD</div>
+        <div class="loading-spinner"></div>
+        <div class="loading-bar"></div>
+        <div class="loading-message">GENERATING ISLAND...</div>
+    </div>
+
+    <!-- MAIN MENU -->
+    <div id="start">
+        <div class="background-grid"></div>
+        <div class="background-glow glow-one"></div>
+        <div class="background-glow glow-two"></div>
+        <div class="scanlines"></div>
+
+        <header class="topbar">
+            <div class="brand">
+                <div class="brand-icon">N</div>
+                <div>
+                    <div class="brand-name">NOAH<span>GAME</span></div>
+                    <div class="brand-subtitle">NEXT GENERATION EXPERIENCE</div>
+                </div>
+            </div>
+
+            <div class="top-status">
+                <span class="status-dot"></span>
+                SYSTEM ONLINE
+            </div>
+        </header>
+
+        <main class="main-layout">
+            <section class="main-content">
+                <div class="eyebrow">
+                    <span class="eyebrow-line"></span>
+                    WELCOME BACK, PLAYER
+                </div>
+
+                <h1>
+                    ENTER THE<br>
+                    <span>BATTLEFIELD.</span>
+                </h1>
+
+                <p class="description">
+                    Prepare yourself. Your world is waiting.
+                    Enter the battlefield and begin your experience.
+                </p>
+
+                <div class="main-buttons">
+                    <button id="play" class="play-button">
+                        <span class="play-symbol">▶</span>
+                        <span>START GAME</span>
+                        <span class="button-arrow">↗</span>
+                    </button>
+
+                    <button id="settings-open" class="settings-button">
+                        <span>⚙</span>
+                        SETTINGS
+                    </button>
+                </div>
+
+                <p id="status" class="loading-status"></p>
+
+                <div class="system-info">
+                    <div>
+                        <span class="info-label">GAME VERSION</span>
+                        <span class="info-value">V1.0.0</span>
+                    </div>
+
+                    <div>
+                        <span class="info-label">BUILD STATUS</span>
+                        <span class="info-value online">OPERATIONAL</span>
+                    </div>
+                </div>
+            </section>
+
+            <section class="visual-section">
+                <div class="visual-label">
+                    <span class="visual-line"></span>
+                    NOAH GAME PROJECT
+                </div>
+
+                <div class="reactor">
+                    <div class="reactor-ring ring-outer"></div>
+                    <div class="reactor-ring ring-middle"></div>
+                    <div class="reactor-ring ring-inner"></div>
+
+                    <div class="reactor-core">
+                        <span>N</span>
+                    </div>
+
+                    <div class="reactor-orbit orbit-one"></div>
+                    <div class="reactor-orbit orbit-two"></div>
+                    <div class="reactor-light"></div>
+                </div>
+
+                <div class="visual-caption">
+                    <span>01 / MAIN SYSTEM</span>
+                    <span>INITIALIZING READY</span>
+                </div>
+            </section>
+        </main>
+
+        <section class="extra-slots">
+            <div class="extra-slot">
+                <div class="slot-top">
+                    <span>EXPANSION SLOT 02</span>
+                    <span class="slot-plus">+</span>
+                </div>
+
+                <div class="slot-empty">
+                    RESERVED FOR FUTURE CONTENT
+                </div>
+            </div>
+        </section>
+
+        <footer class="footer">
+            <span>© 2026 NOAH GAME</span>
+            <span>DESIGNED FOR THE NEXT LEVEL</span>
+            <span>VERSION 1</span>
+        </footer>
+
+        <!-- SETTINGS -->
+        <div id="settings-panel" class="settings-overlay">
+            <div class="settings-window">
+                <div class="settings-header">
+                    <div>
+                        <div class="settings-eyebrow">
+                            SYSTEM CONFIGURATION
+                        </div>
+                        <h2>SETTINGS</h2>
+                    </div>
+
+                    <button id="settings-close" class="close-button">×</button>
+                </div>
+
+                <div class="settings-content">
+                    <div class="setting-row">
+                        <div>
+                            <h3>Menu effects</h3>
+                            <p>Enable animated menu effects</p>
+                        </div>
+
+                        <label class="toggle">
+                            <input type="checkbox" id="effects-toggle" checked>
+                            <span class="toggle-slider"></span>
+                        </label>
+                    </div>
+
+                    <div class="setting-row">
+                        <div>
+                            <h3>Interface glow</h3>
+                            <p>Adjust the intensity of the blue glow</p>
+                        </div>
+
+                        <input
+                            type="range"
+                            id="glow-slider"
+                            min="0"
+                            max="100"
+                            value="65"
+                        >
+                    </div>
+                </div>
+
+                <div class="settings-footer">
+                    <span>NOAH GAME / V1</span>
+                    <button id="settings-done">SAVE & CLOSE</button>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <script type="module">
+        const menu = document.getElementById("start");
+        const playButton = document.getElementById("play");
+        const status = document.getElementById("status");
+        const loadingScreen = document.getElementById("noah-loading");
+
+        const settingsPanel = document.getElementById("settings-panel");
+        const settingsOpen = document.getElementById("settings-open");
+        const settingsClose = document.getElementById("settings-close");
+        const settingsDone = document.getElementById("settings-done");
+
+        const effectsToggle = document.getElementById("effects-toggle");
+        const glowSlider = document.getElementById("glow-slider");
+
+        settingsOpen.addEventListener("click", () => {
+            settingsPanel.classList.add("visible");
+        });
+
+        function closeSettings() {
+            settingsPanel.classList.remove("visible");
+        }
+
+        settingsClose.addEventListener("click", closeSettings);
+        settingsDone.addEventListener("click", closeSettings);
+
+        settingsPanel.addEventListener("click", event => {
+            if (event.target === settingsPanel) {
+                closeSettings();
+            }
+        });
+
+        effectsToggle.addEventListener("change", () => {
+            menu.classList.toggle(
+                "effects-disabled",
+                !effectsToggle.checked
+            );
+        });
+
+        glowSlider.addEventListener("input", () => {
+            document.documentElement.style.setProperty(
+                "--glow-strength",
+                glowSlider.value / 100
+            );
+        });
+
+        playButton.addEventListener("click", () => {
+            playButton.disabled = true;
+            status.textContent = "INITIALIZING GAME...";
+            loadingScreen.classList.add("visible");
+
+            setTimeout(async () => {
+                try {
+                    const game = await import("./scripts/main.js");
+
+                    if (typeof game.startGame !== "function") {
+                        throw new Error("startGame functie ontbreekt");
+                    }
+
+                    game.startGame();
+
+                    // MENU VERBERGEN
+                    menu.style.display = "none";
+                    loadingScreen.classList.remove("visible");
+
+                    // WAPEN-GUI PAS NU TONEN
+                    document.body.classList.add("game-started");
+
+                } catch (error) {
+                    console.error(error);
+
+                    loadingScreen.classList.remove("visible");
+                    status.textContent = "ERROR: " + error.message;
+                    playButton.disabled = false;
+                }
+            }, 100);
+        });
+    </script>
+
+</body>
+</html>

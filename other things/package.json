@@ -1,0 +1,38 @@
+
+{
+  "name": "noah-game",
+  "version": "1.0.0",
+  "description": "NOAH GAME",
+  "main": "tab.cjs",
+  "scripts": {
+    "start": "electron .",
+    "build": "electron-builder --win nsis"
+  },
+  "devDependencies": {
+    "electron": "^45.4.1",
+    "electron-builder": "^26.18.0"
+  },
+  "build": {
+    "appId": "com.noah.game",
+    "productName": "NOAH GAME",
+    "directories": {
+      "output": "installer"
+    },
+    "files": [
+      "tab.cjs",
+      "index.html",
+      "scripts/**/*",
+      "styles/**/*",
+      "models/**/*",
+      "textures/**/*",
+      "package.json"
+    ],
+    "win": {
+      "target": "nsis"
+    },
+    "nsis": {
+      "oneClick": false,
+      "allowToChangeInstallationDirectory": true
+    }
+  }
+}
