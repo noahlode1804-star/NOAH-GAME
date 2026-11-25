@@ -6,7 +6,7 @@
   "main": "tab.cjs",
   "scripts": {
     "start": "electron .",
-    "build": "electron-builder --win nsis"
+    "build": "electron-builder --win nsis --publish never"
   },
   "devDependencies": {
     "electron": "^45.4.1",
