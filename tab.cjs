@@ -18,7 +18,6 @@ function createWindow() {
         }
     });
 
-    // ESC doorgeven aan het pauzemenu.
     win.webContents.on("before-input-event", (event, input) => {
         if (input.type === "keyDown" && input.key === "Escape") {
             event.preventDefault();
@@ -36,8 +35,8 @@ function createWindow() {
         }
     });
 
-    // Altijd de actuele projectbestanden laden.
-    win.loadFile("C:\\NOAH-GAME\\index.html");
+    // Laad de game vanuit de geïnstalleerde applicatiemap.
+    win.loadFile(path.join(__dirname, "index.html"));
 }
 
 app.whenReady().then(createWindow);
