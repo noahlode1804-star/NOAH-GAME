@@ -4,6 +4,8 @@ import * as THREE from 'https://cdn.jsdelivr.net/npm/three@0.180.0/build/three.m
 import { createWorld } from './world.js';
 import { createWeapon } from './weapon.js';
 
+const MULTIPLAYER_URL = 'wss://noah-gamemultiplayer.onrender.com';
+
 export function startGame() {
     const scene = new THREE.Scene();
 
@@ -60,6 +62,300 @@ export function startGame() {
     scene.add(player);
     player.add(camera);
 
+    // MULTIPLAYER STATUS
+    const multiplayerStatus = document.createElement('div');
+
+    multiplayerStatus.id = 'noah-multiplayer-status';
+
+    multiplayerStatus.style.cssText = `
+        position: fixed;
+        left: 22px;
+        top: 22px;
+        z-index: 20;
+        padding: 10px 15px;
+        color: white;
+        background: rgba(5, 15, 28, 0.85);
+        border: 1px solid #35d9ff;
+        box-shadow: 0 0 15px #168cff44;
+        font: bold 11px Arial;
+        letter-spacing: 1px;
+        pointer-events: none;
+    `;
+
+    multiplayerStatus.textContent = 'MULTIPLAYER: CONNECTING...';
+    document.body.appendChild(multiplayerStatus);
+
+    let multiplayerSocket = null;
+    let myPlayerId = null;
+    let currentRoomId = null;
+    let multiplayerConnected = false;
+    let networkSendTimer = 0;
+
+    const remotePlayers = new Map();
+
+    function updateMultiplayerStatus(text, color = '#35d9ff') {
+        multiplayerStatus.textContent = text;
+        multiplayerStatus.style.borderColor = color;
+        multiplayerStatus.style.color = color;
+    }
+
+    // REMOTE PLAYER MODEL
+    function createRemotePlayer(id) {
+        if (remotePlayers.has(id)) {
+            return remotePlayers.get(id);
+        }
+
+        const character = new THREE.Group();
+
+        const colors = [
+            0x35d9ff,
+            0xffb347,
+            0x8b7bff,
+            0x50e3a4,
+            0xff6b91,
+            0xffdf55
+        ];
+
+        const colorIndex = Math.abs(
+            [...id].reduce((sum, char) => sum + char.charCodeAt(0), 0)
+        ) % colors.length;
+
+        const playerColor = colors[colorIndex];
+
+        const bodyMaterial = new THREE.MeshStandardMaterial({
+            color: playerColor,
+            roughness: 0.55
+        });
+
+        const darkMaterial = new THREE.MeshStandardMaterial({
+            color: 0x152a42,
+            roughness: 0.7
+        });
+
+        const faceMaterial = new THREE.MeshStandardMaterial({
+            color: 0xf0f6ff,
+            roughness: 0.45
+        });
+
+        const body = new THREE.Mesh(
+            new THREE.CapsuleGeometry(0.27, 0.65, 5, 10),
+            bodyMaterial
+        );
+
+        body.position.y = 1.05;
+        body.castShadow = true;
+        character.add(body);
+
+        const head = new THREE.Mesh(
+            new THREE.SphereGeometry(0.24, 12, 10),
+            faceMaterial
+        );
+
+        head.position.y = 1.72;
+        head.castShadow = true;
+        character.add(head);
+
+        const eyeGeometry = new THREE.SphereGeometry(0.035, 8, 8);
+
+        const eyeMaterial = new THREE.MeshBasicMaterial({
+            color: 0x101827
+        });
+
+        const leftEye = new THREE.Mesh(eyeGeometry, eyeMaterial);
+        leftEye.position.set(-0.085, 1.76, -0.205);
+        character.add(leftEye);
+
+        const rightEye = new THREE.Mesh(eyeGeometry, eyeMaterial);
+        rightEye.position.set(0.085, 1.76, -0.205);
+        character.add(rightEye);
+
+        const armGeometry = new THREE.CapsuleGeometry(0.09, 0.42, 4, 8);
+
+        const leftArm = new THREE.Mesh(armGeometry, bodyMaterial);
+        leftArm.position.set(-0.37, 1.05, 0);
+        leftArm.rotation.z = -0.16;
+        leftArm.castShadow = true;
+        character.add(leftArm);
+
+        const rightArm = new THREE.Mesh(armGeometry, bodyMaterial);
+        rightArm.position.set(0.37, 1.05, 0);
+        rightArm.rotation.z = 0.16;
+        rightArm.castShadow = true;
+        character.add(rightArm);
+
+        const legGeometry = new THREE.CapsuleGeometry(0.105, 0.38, 4, 8);
+
+        const leftLeg = new THREE.Mesh(legGeometry, darkMaterial);
+        leftLeg.position.set(-0.14, 0.37, 0);
+        leftLeg.castShadow = true;
+        character.add(leftLeg);
+
+        const rightLeg = new THREE.Mesh(legGeometry, darkMaterial);
+        rightLeg.position.set(0.14, 0.37, 0);
+        rightLeg.castShadow = true;
+        character.add(rightLeg);
+
+        const marker = new THREE.Mesh(
+            new THREE.RingGeometry(0.32, 0.39, 24),
+            new THREE.MeshBasicMaterial({
+                color: playerColor,
+                side: THREE.DoubleSide
+            })
+        );
+
+        marker.rotation.x = -Math.PI / 2;
+        marker.position.y = 0.025;
+        character.add(marker);
+
+        scene.add(character);
+
+        const remote = {
+            id,
+            character,
+            targetPosition: new THREE.Vector3(0, 0, 0),
+            targetYaw: 0
+        };
+
+        remotePlayers.set(id, remote);
+
+        return remote;
+    }
+
+    function updateRemotePlayer(id, data) {
+        const remote = remotePlayers.get(id) || createRemotePlayer(id);
+
+        remote.targetPosition.set(
+            data.x,
+            data.y - 1.7,
+            data.z
+        );
+
+        remote.targetYaw = data.yaw || 0;
+    }
+
+    function removeRemotePlayer(id) {
+        const remote = remotePlayers.get(id);
+
+        if (!remote) return;
+
+        scene.remove(remote.character);
+
+        remote.character.traverse(object => {
+            if (object.isMesh) {
+                object.geometry.dispose();
+
+                if (Array.isArray(object.material)) {
+                    object.material.forEach(material => material.dispose());
+                } else {
+                    object.material.dispose();
+                }
+            }
+        });
+
+        remotePlayers.delete(id);
+    }
+
+    // MULTIPLAYER CONNECTION
+    function connectMultiplayer() {
+        try {
+            multiplayerSocket = new WebSocket(MULTIPLAYER_URL);
+
+            multiplayerSocket.addEventListener('open', () => {
+                console.log('Verbonden met NOAH GAME Multiplayer');
+            });
+
+            multiplayerSocket.addEventListener('message', event => {
+                let data;
+
+                try {
+                    data = JSON.parse(event.data);
+                } catch {
+                    return;
+                }
+
+                switch (data.type) {
+                    case 'welcome':
+                        myPlayerId = data.id;
+                        currentRoomId = data.roomId;
+                        multiplayerConnected = true;
+
+                        for (const otherPlayer of data.players || []) {
+                            updateRemotePlayer(otherPlayer.id, otherPlayer);
+                        }
+
+                        updateMultiplayerStatus(
+                            `ONLINE • ${currentRoomId} • ${remotePlayers.size + 1}/${data.maxPlayers}`,
+                            '#50e3a4'
+                        );
+
+                        console.log('Multiplayer room:', currentRoomId);
+                        console.log('Mijn speler:', myPlayerId);
+                        break;
+
+                    case 'player-joined':
+                        if (data.id !== myPlayerId) {
+                            updateRemotePlayer(data.id, data);
+
+                            updateMultiplayerStatus(
+                                `ONLINE • ${currentRoomId} • ${remotePlayers.size + 1}/20`,
+                                '#50e3a4'
+                            );
+                        }
+                        break;
+
+                    case 'player-moved':
+                        if (data.id !== myPlayerId) {
+                            updateRemotePlayer(data.id, data);
+                        }
+                        break;
+
+                    case 'player-left':
+                        removeRemotePlayer(data.id);
+
+                        updateMultiplayerStatus(
+                            `ONLINE • ${currentRoomId} • ${remotePlayers.size + 1}/20`,
+                            '#50e3a4'
+                        );
+                        break;
+                }
+            });
+
+            multiplayerSocket.addEventListener('close', () => {
+                multiplayerConnected = false;
+
+                updateMultiplayerStatus(
+                    'MULTIPLAYER: DISCONNECTED',
+                    '#ff6b6b'
+                );
+
+                console.log('Multiplayer verbinding gesloten.');
+
+                for (const id of [...remotePlayers.keys()]) {
+                    removeRemotePlayer(id);
+                }
+            });
+
+            multiplayerSocket.addEventListener('error', error => {
+                console.error('Multiplayer verbinding fout:', error);
+
+                updateMultiplayerStatus(
+                    'MULTIPLAYER: CONNECTION ERROR',
+                    '#ff6b6b'
+                );
+            });
+
+        } catch (error) {
+            console.error('Multiplayer kon niet starten:', error);
+
+            updateMultiplayerStatus(
+                'MULTIPLAYER: ERROR',
+                '#ff6b6b'
+            );
+        }
+    }
+
+    connectMultiplayer();
+
     // JUMPING
     const groundHeight = 1.7;
     let verticalVelocity = 0;
@@ -97,6 +393,7 @@ export function startGame() {
 
     // MINIMAP
     const mapStyle = document.createElement('style');
+
     mapStyle.textContent = `
         #noah-minimap {
             position: fixed;
@@ -164,6 +461,7 @@ export function startGame() {
             }
         }
     `;
+
     document.head.appendChild(mapStyle);
 
     const mapContainer = document.createElement('div');
@@ -212,7 +510,6 @@ export function startGame() {
             ctx.fill();
         }
 
-        // Roads
         ctx.fillStyle = '#45494b';
         ctx.fillRect(-10, -1200, 20, 2400);
         ctx.fillRect(-1200, -10, 2400, 20);
@@ -231,7 +528,6 @@ export function startGame() {
         ctx.lineTo(500, -75);
         ctx.stroke();
 
-        // Buildings
         for (const building of worldData.buildings) {
             ctx.save();
             ctx.translate(building.x, building.z);
@@ -253,7 +549,6 @@ export function startGame() {
             ctx.restore();
         }
 
-        // Trees
         ctx.fillStyle = '#193f27';
 
         for (const tree of worldData.treePositions) {
@@ -264,7 +559,6 @@ export function startGame() {
 
         ctx.restore();
 
-        // Player marker
         ctx.save();
         ctx.translate(center, center);
 
@@ -281,29 +575,31 @@ export function startGame() {
 
         ctx.restore();
 
-        // Compass
         const angle = (
             (THREE.MathUtils.radToDeg(player.rotation.y) % 360) + 360
         ) % 360;
 
         const directions = ['N', 'NO', 'O', 'ZO', 'Z', 'ZW', 'W', 'NW'];
+
         mapDirection.textContent =
             directions[Math.round(angle / 45) % 8];
     }
 
     // PAUSE MENU
     const pauseStyle = document.createElement('style');
+
     pauseStyle.textContent = `
         #pause-menu {
-            position: fixed;
-            inset: 0;
-            z-index: 1000;
+            position: fixed !important;
+            inset: 0 !important;
+            z-index: 1000000 !important;
             display: flex;
             justify-content: flex-end;
             background: rgba(0, 5, 13, 0.55);
             backdrop-filter: blur(5px);
             opacity: 0;
             visibility: hidden;
+            pointer-events: none;
             transition: opacity 0.25s ease, visibility 0.25s ease;
             font-family: Arial, Helvetica, sans-serif;
         }
@@ -311,6 +607,7 @@ export function startGame() {
         #pause-menu.open {
             opacity: 1;
             visibility: visible;
+            pointer-events: auto;
         }
 
         #pause-panel {
@@ -477,6 +774,7 @@ export function startGame() {
             .pause-heading { font-size: 35px; }
         }
     `;
+
     document.head.appendChild(pauseStyle);
 
     const pauseMenu = document.createElement('div');
@@ -550,15 +848,18 @@ export function startGame() {
 
         paused = true;
 
-        for (const key in keys) keys[key] = false;
-
-        if (document.pointerLockElement) {
-            document.exitPointerLock();
+        for (const key in keys) {
+            keys[key] = false;
         }
 
         pauseMain.style.display = 'block';
         pauseSettings.classList.remove('visible');
+
         pauseMenu.classList.add('open');
+
+        if (document.pointerLockElement) {
+            document.exitPointerLock();
+        }
     }
 
     function closePauseMenu() {
@@ -566,9 +867,13 @@ export function startGame() {
 
         paused = false;
         pauseMenu.classList.remove('open');
-        renderer.domElement.requestPointerLock();
+
+        renderer.domElement.requestPointerLock().catch(error => {
+            console.warn('Pointer Lock kon niet worden gestart:', error);
+        });
     }
 
+    // PAUSE BUTTONS
     document.getElementById('pause-resume')
         .addEventListener('click', closePauseMenu);
 
@@ -605,20 +910,42 @@ export function startGame() {
         );
     });
 
+    // ==================================================
+    // ESC + POINTER LOCK FIX
+    // ==================================================
+
+    let hadPointerLock = false;
+
+    document.addEventListener('pointerlockchange', () => {
+        const isLocked =
+            document.pointerLockElement === renderer.domElement;
+
+        if (isLocked) {
+            hadPointerLock = true;
+            return;
+        }
+
+        // Browser heeft Pointer Lock zelf beëindigd.
+        // Open het menu alleen als de game actief was.
+        if (hadPointerLock && !paused) {
+            openPauseMenu();
+        }
+    });
+
     // KEYBOARD
     document.addEventListener('keydown', event => {
         if (event.key === 'Escape') {
             event.preventDefault();
 
-            if (paused) closePauseMenu();
-            else openPauseMenu();
+            if (!paused) {
+                openPauseMenu();
+            }
 
             return;
         }
 
         if (paused) return;
 
-        // SPRINGEN MET SPATIE
         if (event.code === 'Space') {
             event.preventDefault();
 
@@ -802,7 +1129,7 @@ export function startGame() {
             if (keys.a) player.translateX(-speed);
             if (keys.d) player.translateX(speed);
 
-            // ZWAARTEKRACHT EN SPRONG
+            // GRAVITY AND JUMPING
             if (!onGround) {
                 verticalVelocity -= gravity;
                 player.position.y += verticalVelocity;
@@ -831,6 +1158,42 @@ export function startGame() {
 
             if (now > flashUntil) muzzleFlash.visible = false;
 
+            // SEND POSITION TO SERVER
+            networkSendTimer += 1;
+
+            if (
+                multiplayerConnected &&
+                multiplayerSocket &&
+                multiplayerSocket.readyState === WebSocket.OPEN &&
+                networkSendTimer >= 4
+            ) {
+                networkSendTimer = 0;
+
+                multiplayerSocket.send(JSON.stringify({
+                    type: 'move',
+                    x: player.position.x,
+                    y: player.position.y,
+                    z: player.position.z,
+                    yaw: player.rotation.y,
+                    pitch: camera.rotation.x
+                }));
+            }
+
+            // SMOOTH REMOTE PLAYER MOVEMENT
+            for (const remote of remotePlayers.values()) {
+                remote.character.position.lerp(
+                    remote.targetPosition,
+                    0.25
+                );
+
+                remote.character.rotation.y = THREE.MathUtils.lerp(
+                    remote.character.rotation.y,
+                    remote.targetYaw,
+                    0.25
+                );
+            }
+
+            // REMOVE EXPIRED EFFECTS
             for (let i = effects.length - 1; i >= 0; i--) {
                 if (now >= effects[i].expires) {
                     scene.remove(effects[i].object);
